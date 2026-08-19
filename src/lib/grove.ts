@@ -307,7 +307,18 @@ export type FnbData = {
   hourly: { hour: string; nett: number }[];
   dow: { day: string; avg: number }[];
   tenants: { id: string; name: string; nett: number; pax: number; share: number }[];
+  segments: { name: string; range: string; nett: number; pax: number; share: number }[];
+  heatHours: string[];
+  heat: { day: string; cells: number[] }[];
 };
+
+// Jam tersibuk CIBIS: sarapan, makan siang, after office. Batas inklusif per
+// jam POS (17–19 berarti pukul 17:00 sampai 19:59).
+const TIME_SEGMENTS = [
+  { name: "Breakfast", range: "07:00–10:59", lo: 7, hi: 10 },
+  { name: "Lunch", range: "12:00–14:59", lo: 12, hi: 14 },
+  { name: "After Office", range: "17:00–19:59", lo: 17, hi: 19 },
+];
 
 export async function getFnb(opts: RangeOpts = {}): Promise<FnbData> {
   const emptyOut: FnbData = {
@@ -315,6 +326,7 @@ export async function getFnb(opts: RangeOpts = {}): Promise<FnbData> {
     tenant: null, tenantOptions: [],
     nett: 0, pax: 0, days: 0, disc: 0, sub: 0,
     daily: [], hourly: [], dow: [], tenants: [],
+    segments: [], heatHours: [], heat: [],
   };
   if (!isConfigured) return emptyOut;
   const all = await getSales();
@@ -349,16 +361,35 @@ export async function getFnb(opts: RangeOpts = {}): Promise<FnbData> {
   // Average per weekday over trading days only; counting closed days would
   // drag the average toward zero.
   const dowSum = new Map<number, { total: number; days: Set<string> }>();
+  const heatSum = new Map<number, Map<number, number>>();
+  const segNett = TIME_SEGMENTS.map(() => 0).concat(0);
+  const segPax = TIME_SEGMENTS.map(() => 0).concat(0);
   for (const r of sales) {
     const d = r.sales_date.slice(0, 10);
     byDay.set(d, (byDay.get(d) ?? 0) + (r.nett_sales || 0));
-    const h = parseInt(String(r.sales_hour).slice(0, 2), 10);
-    if (!Number.isNaN(h)) byHour.set(h, (byHour.get(h) ?? 0) + (r.nett_sales || 0));
     const dow = new Date(d + "T00:00:00").getDay();
+    const h = parseInt(String(r.sales_hour).slice(0, 2), 10);
+    if (!Number.isNaN(h)) {
+      byHour.set(h, (byHour.get(h) ?? 0) + (r.nett_sales || 0));
+      const row = heatSum.get(dow) ?? new Map<number, number>();
+      row.set(h, (row.get(h) ?? 0) + (r.nett_sales || 0));
+      heatSum.set(dow, row);
+      let si = TIME_SEGMENTS.findIndex((s) => h >= s.lo && h <= s.hi);
+      if (si < 0) si = TIME_SEGMENTS.length; // di luar tiga segmen
+      segNett[si] += r.nett_sales || 0;
+      segPax[si] += r.pax_total || 0;
+    }
     const cur = dowSum.get(dow) ?? { total: 0, days: new Set<string>() };
     cur.total += r.nett_sales || 0; cur.days.add(d); dowSum.set(dow, cur);
   }
   const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+  const hourKeys = [...byHour.keys()].sort((a, b) => a - b);
+  const hourSpan = hourKeys.length
+    ? Array.from(
+        { length: hourKeys[hourKeys.length - 1] - hourKeys[0] + 1 },
+        (_, i) => hourKeys[0] + i,
+      )
+    : [];
 
   const byTenant = new Map<string, { name: string; nett: number; pax: number }>();
   for (const r of sales) {
@@ -383,6 +414,27 @@ export async function getFnb(opts: RangeOpts = {}): Promise<FnbData> {
     tenants: [...byTenant.entries()]
       .map(([id, t]) => ({ id, ...t, share: nett ? (t.nett / nett) * 100 : 0 }))
       .sort((a, b) => b.nett - a.nett),
+    segments: TIME_SEGMENTS.map((s, i) => ({
+      name: s.name, range: s.range, nett: segNett[i], pax: segPax[i],
+      share: nett ? (segNett[i] / nett) * 100 : 0,
+    })).concat({
+      name: "Di luar segmen", range: "jam lainnya",
+      nett: segNett[TIME_SEGMENTS.length], pax: segPax[TIME_SEGMENTS.length],
+      share: nett ? (segNett[TIME_SEGMENTS.length] / nett) * 100 : 0,
+    }),
+    heatHours: hourSpan.map((h) => String(h).padStart(2, "0")),
+    // Rata-rata per hari berdagang untuk tiap hari-minggu: total mentah akan
+    // berat sebelah bila rentang memuat 5 Senin tapi hanya 4 Minggu.
+    heat: [1, 2, 3, 4, 5, 6, 0].map((dw) => {
+      const row = heatSum.get(dw);
+      const nDays = dowSum.get(dw)?.days.size ?? 0;
+      return {
+        day: dayNames[dw],
+        cells: hourSpan.map((h) =>
+          row && nDays ? Math.round((row.get(h) ?? 0) / nDays) : 0,
+        ),
+      };
+    }),
   };
 }
 

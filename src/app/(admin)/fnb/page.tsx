@@ -4,6 +4,8 @@ import GroveMetrics from "@/components/grove/GroveMetrics";
 import ChartCard from "@/components/grove/ChartCard";
 import TenantTable from "@/components/grove/TenantTable";
 import FilterBar from "@/components/grove/FilterBar";
+import HourHeatmap from "@/components/grove/HourHeatmap";
+import SegmentBreakdown from "@/components/grove/SegmentBreakdown";
 import { getFnb, fmtRp, idNum } from "@/lib/grove";
 
 export const metadata: Metadata = { title: "Dashboard F&B — GROVE" };
@@ -100,6 +102,18 @@ export default async function FnbPage({
               categories={d.dow.map((x) => x.day)}
               series={[{ name: "Rata-rata", data: d.dow.map((x) => Math.round(x.avg)) }]}
               kind="bar"
+            />
+          </div>
+
+          <div className="col-span-12 xl:col-span-8">
+            <HourHeatmap hours={d.heatHours} rows={d.heat} />
+          </div>
+          <div className="col-span-12 xl:col-span-4">
+            <SegmentBreakdown
+              rows={d.segments.map((s) => ({
+                name: s.name, range: s.range, nett: fmtRp(s.nett),
+                pax: idNum(s.pax), share: s.share,
+              }))}
             />
           </div>
 
