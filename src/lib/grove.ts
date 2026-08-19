@@ -303,6 +303,93 @@ export type RangeOpts = { from?: string; to?: string; tenant?: string };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// Local-time date-string builder. toISOString() converts to UTC first, which
+// on a UTC+7 machine turns local midnight into "yesterday" — dates must never
+// pass through it.
+function ymd(dt: Date): string {
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+const DAY_SHORT = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+                     "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+
+function mondayOf(date: string): string {
+  const dt = new Date(date + "T00:00:00");
+  dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+  return ymd(dt);
+}
+
+function weekLabel(monday: string): string {
+  const s = new Date(monday + "T00:00:00");
+  const e = new Date(monday + "T00:00:00");
+  e.setDate(e.getDate() + 6);
+  const f = (x: Date) => `${x.getDate()} ${MONTH_SHORT[x.getMonth()]}`;
+  return `${f(s)} – ${f(e)}`;
+}
+
+function monthLabel(m: string): string {
+  return `${MONTH_SHORT[parseInt(m.slice(5), 10) - 1]} ${m.slice(0, 4)}`;
+}
+
+export type WeeklyRow = {
+  label: string; days: number; nett: number; avgDay: number; wow: number | null;
+};
+export type MonthlyRow = {
+  label: string; days: number; nett: number; vol: number;
+  avgDay: number; mom: number | null; partial: boolean;
+};
+
+/**
+ * Weekly recap from a per-day nett map. Deltas compare avg per trading day,
+ * not totals — edge weeks are clipped by the filter range, so raw totals
+ * would show fake drops (the partial-month lesson, at week scale).
+ */
+function weeklyRecap(byDay: Map<string, number>, keep = 12): WeeklyRow[] {
+  const wk = new Map<string, { nett: number; days: number }>();
+  for (const [d, v] of byDay) {
+    const m = mondayOf(d);
+    const cur = wk.get(m) ?? { nett: 0, days: 0 };
+    cur.nett += v; cur.days += 1; wk.set(m, cur);
+  }
+  const rows = [...wk.entries()].sort(([a], [b]) => a.localeCompare(b));
+  let prev: number | null = null;
+  const out: WeeklyRow[] = rows.map(([monday, w]) => {
+    const avgDay = w.nett / w.days;
+    const wow = prev !== null && prev > 0 ? ((avgDay - prev) / prev) * 100 : null;
+    prev = avgDay;
+    return { label: weekLabel(monday), days: w.days, nett: w.nett, avgDay, wow };
+  });
+  return out.slice(-keep);
+}
+
+/**
+ * Monthly recap over the FULL history (a 30-day filter window barely holds
+ * two months, so this section deliberately ignores the date filter). Deltas
+ * compare avg per trading day so the running month reads fairly.
+ */
+function monthlyRecap(
+  perMonth: Map<string, { nett: number; vol: number; days: Set<string> }>,
+  dataMax: string, keep = 12,
+): MonthlyRow[] {
+  const rows = [...perMonth.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const maxMonth = dataMax.slice(0, 7);
+  const daysIn = (m: string) =>
+    new Date(parseInt(m.slice(0, 4), 10), parseInt(m.slice(5), 10), 0).getDate();
+  let prev: number | null = null;
+  const out: MonthlyRow[] = rows.map(([m, x]) => {
+    const avgDay = x.nett / x.days.size;
+    const mom = prev !== null && prev > 0 ? ((avgDay - prev) / prev) * 100 : null;
+    prev = avgDay;
+    return {
+      label: monthLabel(m), days: x.days.size, nett: x.nett, vol: x.vol,
+      avgDay, mom,
+      partial: m === maxMonth && parseInt(dataMax.slice(8), 10) < daysIn(m),
+    };
+  });
+  return out.slice(-keep);
+}
+
 /**
  * Resolve the active window from query params against the data's own span.
  *
@@ -320,7 +407,7 @@ function resolveRange(dates: string[], opts: RangeOpts) {
   if (!from) {
     const d = new Date(to + "T00:00:00");
     d.setDate(d.getDate() - 29);
-    const candidate = d.toISOString().slice(0, 10);
+    const candidate = ymd(d);
     from = candidate < min ? min : candidate;
   }
   if (from > to) [from, to] = [to, from];
@@ -340,6 +427,9 @@ export type FnbData = {
   segments: { name: string; range: string; nett: number; pax: number; share: number }[];
   heatHours: string[];
   heat: { day: string; cells: number[] }[];
+  weekly: WeeklyRow[];
+  monthly: MonthlyRow[];
+  deep: { date: string; dow: string; nett: number; pax: number; avgPax: number }[];
 };
 
 // Jam tersibuk CIBIS: sarapan, makan siang, after office. Batas inklusif per
@@ -357,6 +447,7 @@ export async function getFnb(opts: RangeOpts = {}): Promise<FnbData> {
     nett: 0, pax: 0, days: 0, disc: 0, sub: 0,
     daily: [], hourly: [], dow: [], tenants: [],
     segments: [], heatHours: [], heat: [],
+    weekly: [], monthly: [], deep: [],
   };
   if (!isConfigured) return emptyOut;
   const all = await getSales();
@@ -387,6 +478,7 @@ export async function getFnb(opts: RangeOpts = {}): Promise<FnbData> {
   const pax = sales.reduce((s, r) => s + (r.pax_total || 0), 0);
 
   const byDay = new Map<string, number>();
+  const byDayPax = new Map<string, number>();
   const byHour = new Map<number, number>();
   // Average per weekday over trading days only; counting closed days would
   // drag the average toward zero.
@@ -397,6 +489,7 @@ export async function getFnb(opts: RangeOpts = {}): Promise<FnbData> {
   for (const r of sales) {
     const d = r.sales_date.slice(0, 10);
     byDay.set(d, (byDay.get(d) ?? 0) + (r.nett_sales || 0));
+    byDayPax.set(d, (byDayPax.get(d) ?? 0) + (r.pax_total || 0));
     const dow = new Date(d + "T00:00:00").getDay();
     const h = parseInt(String(r.sales_hour).slice(0, 2), 10);
     if (!Number.isNaN(h)) {
@@ -426,6 +519,18 @@ export async function getFnb(opts: RangeOpts = {}): Promise<FnbData> {
     const cur = byTenant.get(r.tenant_id) ?? { name: r.tenant_name, nett: 0, pax: 0 };
     cur.nett += r.nett_sales || 0; cur.pax += r.pax_total || 0;
     byTenant.set(r.tenant_id, cur);
+  }
+
+  // Monthly overview spans the whole (tenant-filtered) history, on purpose —
+  // the default 30-day window barely holds two months.
+  const perMonth = new Map<string, { nett: number; vol: number; days: Set<string> }>();
+  for (const r of all) {
+    if (tenant && r.tenant_id !== tenant) continue;
+    const m = r.sales_date.slice(0, 7);
+    const cur = perMonth.get(m) ?? { nett: 0, vol: 0, days: new Set<string>() };
+    cur.nett += r.nett_sales || 0; cur.vol += r.pax_total || 0;
+    cur.days.add(r.sales_date.slice(0, 10));
+    perMonth.set(m, cur);
   }
 
   return {
@@ -465,6 +570,16 @@ export async function getFnb(opts: RangeOpts = {}): Promise<FnbData> {
         ),
       };
     }),
+    weekly: weeklyRecap(byDay),
+    monthly: monthlyRecap(perMonth, max),
+    deep: [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, v]) => {
+        const p = byDayPax.get(date) ?? 0;
+        return {
+          date, dow: DAY_SHORT[new Date(date + "T00:00:00").getDay()],
+          nett: v, pax: p, avgPax: p ? v / p : 0,
+        };
+      }),
   };
 }
 
@@ -476,6 +591,9 @@ export type PgData = {
   dailyNett: { date: string; nett: number }[];
   weekendPerDay: number; weekdayPerDay: number;
   solo: number;
+  weekly: WeeklyRow[];
+  monthly: MonthlyRow[];
+  deep: { date: string; dow: string; nett: number; trx: number; child: number; comp: number }[];
 };
 
 export async function getPlayground(opts: RangeOpts = {}): Promise<PgData> {
@@ -483,6 +601,7 @@ export async function getPlayground(opts: RangeOpts = {}): Promise<PgData> {
     configured: isConfigured, dataMin: "", dataMax: "", from: "", to: "",
     nett: 0, trx: 0, child: 0, comp: 0, days: 0,
     daily: [], dailyNett: [], weekendPerDay: 0, weekdayPerDay: 0, solo: 0,
+    weekly: [], monthly: [], deep: [],
   };
   if (!isConfigured) return emptyOut;
   const all = await getPg();
@@ -498,15 +617,16 @@ export async function getPlayground(opts: RangeOpts = {}): Promise<PgData> {
     return { ...emptyOut, configured: true, dataMin: min, dataMax: max, from, to };
   }
 
-  const byDay = new Map<string, { nett: number; child: number; comp: number }>();
+  const byDay = new Map<string, { nett: number; child: number; comp: number; trx: number }>();
   let weNett = 0, wdNett = 0;
   const weDays = new Set<string>(), wdDays = new Set<string>();
   for (const r of pg) {
     const d = r.sales_date.slice(0, 10);
-    const cur = byDay.get(d) ?? { nett: 0, child: 0, comp: 0 };
+    const cur = byDay.get(d) ?? { nett: 0, child: 0, comp: 0, trx: 0 };
     cur.nett += r.nett_sales || 0;
     cur.child += r.child_total || 0;
     cur.comp += r.companion_total || 0;
+    cur.trx += 1;
     byDay.set(d, cur);
     const isWe = [0, 6].includes(new Date(d + "T00:00:00").getDay());
     if (isWe) { weNett += r.nett_sales || 0; weDays.add(d); }
@@ -528,5 +648,21 @@ export async function getPlayground(opts: RangeOpts = {}): Promise<PgData> {
     weekendPerDay: weDays.size ? weNett / weDays.size : 0,
     weekdayPerDay: wdDays.size ? wdNett / wdDays.size : 0,
     solo: pg.filter((r) => !r.companion_total).length,
+    weekly: weeklyRecap(new Map([...byDay.entries()].map(([d, v]) => [d, v.nett]))),
+    monthly: monthlyRecap((() => {
+      const perMonth = new Map<string, { nett: number; vol: number; days: Set<string> }>();
+      for (const r of all) {
+        const m = r.sales_date.slice(0, 7);
+        const cur = perMonth.get(m) ?? { nett: 0, vol: 0, days: new Set<string>() };
+        cur.nett += r.nett_sales || 0; cur.vol += r.child_total || 0;
+        cur.days.add(r.sales_date.slice(0, 10));
+        perMonth.set(m, cur);
+      }
+      return perMonth;
+    })(), max),
+    deep: sorted.map(([date, v]) => ({
+      date, dow: DAY_SHORT[new Date(date + "T00:00:00").getDay()],
+      nett: v.nett, trx: v.trx, child: v.child, comp: v.comp,
+    })),
   };
 }

@@ -3,6 +3,8 @@ import React from "react";
 import GroveMetrics from "@/components/grove/GroveMetrics";
 import ChartCard from "@/components/grove/ChartCard";
 import FilterBar from "@/components/grove/FilterBar";
+import RecapTable from "@/components/grove/RecapTable";
+import DeepDiveTable from "@/components/grove/DeepDiveTable";
 import { getPlayground, fmtRp, idNum } from "@/lib/grove";
 
 export const metadata: Metadata = { title: "Playground — GROVE" };
@@ -102,6 +104,46 @@ export default async function PlaygroundPage({
               }]}
               kind="bar"
               colors={["#465FFF", "#7A5AF8"]}
+            />
+          </div>
+
+          <div className="col-span-12 xl:col-span-6">
+            <RecapTable
+              title="Rekap mingguan"
+              subtitle="Mengikuti rentang filter · ± membandingkan rata-rata per hari operasi minggu sebelumnya"
+              headers={["Minggu", "Hari", "Nett", "Rata / hari"]}
+              rows={d.weekly.map((w) => ({
+                cells: [w.label, idNum(w.days), fmtRp(w.nett), fmtRp(w.avgDay)],
+                delta: w.wow,
+              }))}
+            />
+          </div>
+          <div className="col-span-12 xl:col-span-6">
+            <RecapTable
+              title="Ikhtisar bulanan"
+              subtitle="Seluruh riwayat Playground (maks 12 bulan) — tidak mengikuti filter tanggal"
+              headers={["Bulan", "Hari", "Nett", "Anak", "Rata / hari"]}
+              rows={d.monthly.map((m) => ({
+                cells: [m.label, idNum(m.days), fmtRp(m.nett), idNum(m.vol), fmtRp(m.avgDay)],
+                delta: m.mom,
+                tag: m.partial ? "berjalan" : undefined,
+              }))}
+            />
+          </div>
+
+          <div className="col-span-12">
+            <DeepDiveTable
+              title="Rincian harian"
+              subtitle="Setiap hari operasi dalam rentang"
+              cols={[
+                { key: "date", label: "Tanggal", kind: "text" },
+                { key: "dow", label: "Hari", kind: "text" },
+                { key: "nett", label: "Nett Sales", kind: "money" },
+                { key: "trx", label: "Transaksi", kind: "num" },
+                { key: "child", label: "Anak", kind: "num" },
+                { key: "comp", label: "Pendamping", kind: "num" },
+              ]}
+              rows={d.deep}
             />
           </div>
         </>

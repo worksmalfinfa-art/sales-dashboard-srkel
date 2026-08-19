@@ -6,6 +6,8 @@ import TenantTable from "@/components/grove/TenantTable";
 import FilterBar from "@/components/grove/FilterBar";
 import HourHeatmap from "@/components/grove/HourHeatmap";
 import SegmentBreakdown from "@/components/grove/SegmentBreakdown";
+import RecapTable from "@/components/grove/RecapTable";
+import DeepDiveTable from "@/components/grove/DeepDiveTable";
 import { getFnb, fmtRp, idNum } from "@/lib/grove";
 
 export const metadata: Metadata = { title: "Dashboard F&B — GROVE" };
@@ -114,6 +116,45 @@ export default async function FnbPage({
                 name: s.name, range: s.range, nett: fmtRp(s.nett),
                 pax: idNum(s.pax), share: s.share,
               }))}
+            />
+          </div>
+
+          <div className="col-span-12 xl:col-span-6">
+            <RecapTable
+              title="Rekap mingguan"
+              subtitle="Mengikuti rentang filter · ± membandingkan rata-rata per hari berdagang minggu sebelumnya"
+              headers={["Minggu", "Hari", "Nett", "Rata / hari"]}
+              rows={d.weekly.map((w) => ({
+                cells: [w.label, idNum(w.days), fmtRp(w.nett), fmtRp(w.avgDay)],
+                delta: w.wow,
+              }))}
+            />
+          </div>
+          <div className="col-span-12 xl:col-span-6">
+            <RecapTable
+              title="Ikhtisar bulanan"
+              subtitle={`Seluruh riwayat ${d.tenant ? tenantName : "F&B"} (maks 12 bulan) — tidak mengikuti filter tanggal`}
+              headers={["Bulan", "Hari", "Nett", "Pax", "Rata / hari"]}
+              rows={d.monthly.map((m) => ({
+                cells: [m.label, idNum(m.days), fmtRp(m.nett), idNum(m.vol), fmtRp(m.avgDay)],
+                delta: m.mom,
+                tag: m.partial ? "berjalan" : undefined,
+              }))}
+            />
+          </div>
+
+          <div className="col-span-12">
+            <DeepDiveTable
+              title="Rincian harian"
+              subtitle={`Setiap hari berdagang dalam rentang · ${tenantName}`}
+              cols={[
+                { key: "date", label: "Tanggal", kind: "text" },
+                { key: "dow", label: "Hari", kind: "text" },
+                { key: "nett", label: "Nett Sales", kind: "money" },
+                { key: "pax", label: "Pax", kind: "num" },
+                { key: "avgPax", label: "Rata / Pax", kind: "money" },
+              ]}
+              rows={d.deep}
             />
           </div>
 
