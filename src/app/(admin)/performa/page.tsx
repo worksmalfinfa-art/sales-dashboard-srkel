@@ -5,6 +5,7 @@ import GroveMetrics from "@/components/grove/GroveMetrics";
 import MonthPicker from "@/components/grove/MonthPicker";
 import TargetCard from "@/components/grove/TargetCard";
 import UnitTable from "@/components/grove/UnitTable";
+import ExportMenu from "@/components/grove/ExportMenu";
 import { getPerformance, fmtRp, idNum } from "@/lib/grove";
 
 export const metadata: Metadata = { title: "Performa Tenant — GROVE" };
@@ -62,7 +63,10 @@ export default async function PerformaPage({
             {d.month} · {basis}
           </p>
         </div>
-        <MonthPicker months={d.months} value={d.month} />
+        <div className="flex flex-wrap items-center gap-2">
+          <MonthPicker months={d.months} value={d.month} />
+          <ExportMenu dataset="performa" />
+        </div>
       </div>
 
       <div className="col-span-12">

@@ -750,3 +750,35 @@ span.flatpickr-weekday,
   opacity: 0.8;
   cursor: grabbing; /* Changes the cursor to indicate dragging */
 }
+
+/* ============================================================
+   Print (PDF) mode: content only, white page, no chrome.
+   Charts and cards flow at full width; nothing scrolls.
+   ============================================================ */
+@media print {
+  aside,
+  header,
+  .flatpickr-calendar {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  main > div,
+  .lg\:ml-\[290px\],
+  .lg\:ml-\[90px\] {
+    margin-left: 0 !important;
+  }
+  .print\:hidden,
+  select,
+  input {
+    display: none !important;
+  }
+  .rounded-2xl {
+    break-inside: avoid;
+  }
+  .max-h-\[430px\] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}

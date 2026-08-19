@@ -8,6 +8,7 @@ import HourHeatmap from "@/components/grove/HourHeatmap";
 import SegmentBreakdown from "@/components/grove/SegmentBreakdown";
 import RecapTable from "@/components/grove/RecapTable";
 import DeepDiveTable from "@/components/grove/DeepDiveTable";
+import ExportMenu from "@/components/grove/ExportMenu";
 import { getFnb, fmtRp, idNum } from "@/lib/grove";
 
 export const metadata: Metadata = { title: "Dashboard F&B — GROVE" };
@@ -49,10 +50,13 @@ export default async function FnbPage({
             {tenantName} · {d.from} – {d.to}
           </p>
         </div>
-        <FilterBar
-          path="/fnb" from={d.from} to={d.to} min={d.dataMin} max={d.dataMax}
-          tenant={d.tenant} tenants={d.tenantOptions}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterBar
+            path="/fnb" from={d.from} to={d.to} min={d.dataMin} max={d.dataMax}
+            tenant={d.tenant} tenants={d.tenantOptions}
+          />
+          <ExportMenu dataset="fnb" />
+        </div>
       </div>
 
       {d.daily.length === 0 ? (

@@ -5,6 +5,7 @@ import ChartCard from "@/components/grove/ChartCard";
 import FilterBar from "@/components/grove/FilterBar";
 import RecapTable from "@/components/grove/RecapTable";
 import DeepDiveTable from "@/components/grove/DeepDiveTable";
+import ExportMenu from "@/components/grove/ExportMenu";
 import { getPlayground, fmtRp, idNum } from "@/lib/grove";
 
 export const metadata: Metadata = { title: "Playground — GROVE" };
@@ -44,8 +45,11 @@ export default async function PlaygroundPage({
             Twist N&apos; Turns · {d.from} – {d.to}
           </p>
         </div>
-        <FilterBar path="/playground" from={d.from} to={d.to}
-                   min={d.dataMin} max={d.dataMax} />
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterBar path="/playground" from={d.from} to={d.to}
+                     min={d.dataMin} max={d.dataMax} />
+          <ExportMenu dataset="playground" />
+        </div>
       </div>
 
       {d.daily.length === 0 ? (
