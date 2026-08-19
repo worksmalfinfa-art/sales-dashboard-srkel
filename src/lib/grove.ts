@@ -269,8 +269,39 @@ export async function getPerformance(reqMonth?: string): Promise<PerfData> {
   };
 }
 
+export type RangeOpts = { from?: string; to?: string; tenant?: string };
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Resolve the active window from query params against the data's own span.
+ *
+ * Defaults to the last 30 days OF THE DATA, not of the calendar — the
+ * Streamlit version once defaulted to "last 30 days of today" and opened
+ * empty whenever the newest upload was older than a month, which reads as a
+ * broken page rather than a filter. Bad params are ignored, an inverted
+ * range is swapped rather than erroring.
+ */
+function resolveRange(dates: string[], opts: RangeOpts) {
+  const min = dates[0], max = dates[dates.length - 1];
+  let from = opts.from && DATE_RE.test(opts.from) ? opts.from : "";
+  let to = opts.to && DATE_RE.test(opts.to) ? opts.to : "";
+  if (!to) to = max;
+  if (!from) {
+    const d = new Date(to + "T00:00:00");
+    d.setDate(d.getDate() - 29);
+    const candidate = d.toISOString().slice(0, 10);
+    from = candidate < min ? min : candidate;
+  }
+  if (from > to) [from, to] = [to, from];
+  return { min, max, from, to };
+}
+
 export type FnbData = {
   configured: boolean;
+  dataMin: string; dataMax: string; from: string; to: string;
+  tenant: string | null;
+  tenantOptions: { id: string; name: string }[];
   nett: number; pax: number; days: number; disc: number; sub: number;
   daily: { date: string; nett: number }[];
   hourly: { hour: string; nett: number }[];
@@ -278,14 +309,37 @@ export type FnbData = {
   tenants: { id: string; name: string; nett: number; pax: number; share: number }[];
 };
 
-export async function getFnb(): Promise<FnbData> {
+export async function getFnb(opts: RangeOpts = {}): Promise<FnbData> {
   const emptyOut: FnbData = {
-    configured: isConfigured, nett: 0, pax: 0, days: 0, disc: 0, sub: 0,
+    configured: isConfigured, dataMin: "", dataMax: "", from: "", to: "",
+    tenant: null, tenantOptions: [],
+    nett: 0, pax: 0, days: 0, disc: 0, sub: 0,
     daily: [], hourly: [], dow: [], tenants: [],
   };
   if (!isConfigured) return emptyOut;
-  const sales = await getSales();
-  if (!sales.length) return emptyOut;
+  const all = await getSales();
+  if (!all.length) return emptyOut;
+
+  const allDates = all.map((r) => r.sales_date.slice(0, 10)).sort();
+  const { min, max, from, to } = resolveRange(allDates, opts);
+
+  // The dropdown always lists every tenant, from the unfiltered set --
+  // otherwise picking one tenant would make the others vanish from the list.
+  const optMap = new Map<string, string>();
+  for (const r of all) if (!optMap.has(r.tenant_id)) optMap.set(r.tenant_id, r.tenant_name);
+  const tenantOptions = [...optMap.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const tenant = opts.tenant && optMap.has(opts.tenant) ? opts.tenant : null;
+
+  const sales = all.filter((r) => {
+    const d = r.sales_date.slice(0, 10);
+    return d >= from && d <= to && (!tenant || r.tenant_id === tenant);
+  });
+  if (!sales.length) {
+    return { ...emptyOut, configured: true, dataMin: min, dataMax: max,
+             from, to, tenant, tenantOptions };
+  }
 
   const nett = sales.reduce((s, r) => s + (r.nett_sales || 0), 0);
   const pax = sales.reduce((s, r) => s + (r.pax_total || 0), 0);
@@ -314,7 +368,8 @@ export async function getFnb(): Promise<FnbData> {
   }
 
   return {
-    configured: true, nett, pax, days: byDay.size,
+    configured: true, dataMin: min, dataMax: max, from, to, tenant, tenantOptions,
+    nett, pax, days: byDay.size,
     disc: sales.reduce((s, r) => s + (r.discount_total || 0), 0),
     sub: sales.reduce((s, r) => s + (r.subtotal || 0), 0),
     daily: [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b))
@@ -333,6 +388,7 @@ export async function getFnb(): Promise<FnbData> {
 
 export type PgData = {
   configured: boolean;
+  dataMin: string; dataMax: string; from: string; to: string;
   nett: number; trx: number; child: number; comp: number; days: number;
   daily: { date: string; child: number; comp: number }[];
   dailyNett: { date: string; nett: number }[];
@@ -340,14 +396,25 @@ export type PgData = {
   solo: number;
 };
 
-export async function getPlayground(): Promise<PgData> {
+export async function getPlayground(opts: RangeOpts = {}): Promise<PgData> {
   const emptyOut: PgData = {
-    configured: isConfigured, nett: 0, trx: 0, child: 0, comp: 0, days: 0,
+    configured: isConfigured, dataMin: "", dataMax: "", from: "", to: "",
+    nett: 0, trx: 0, child: 0, comp: 0, days: 0,
     daily: [], dailyNett: [], weekendPerDay: 0, weekdayPerDay: 0, solo: 0,
   };
   if (!isConfigured) return emptyOut;
-  const pg = await getPg();
-  if (!pg.length) return emptyOut;
+  const all = await getPg();
+  if (!all.length) return emptyOut;
+
+  const allDates = all.map((r) => r.sales_date.slice(0, 10)).sort();
+  const { min, max, from, to } = resolveRange(allDates, opts);
+  const pg = all.filter((r) => {
+    const d = r.sales_date.slice(0, 10);
+    return d >= from && d <= to;
+  });
+  if (!pg.length) {
+    return { ...emptyOut, configured: true, dataMin: min, dataMax: max, from, to };
+  }
 
   const byDay = new Map<string, { nett: number; child: number; comp: number }>();
   let weNett = 0, wdNett = 0;
@@ -366,7 +433,7 @@ export async function getPlayground(): Promise<PgData> {
   const sorted = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
 
   return {
-    configured: true,
+    configured: true, dataMin: min, dataMax: max, from, to,
     nett: pg.reduce((s, r) => s + (r.nett_sales || 0), 0),
     trx: pg.length,
     child: pg.reduce((s, r) => s + (r.child_total || 0), 0),
