@@ -203,9 +203,40 @@ const getPg = cache(() => fetchAll<PlaygroundRow>(
   ["order_id"],
 ));
 
+type UnitRec = {
+  unit_id: string; unit_code: string; floor: string | null; is_active: boolean;
+};
+type TenancyRec = {
+  tenancy_id: number; unit_id: string; tenant_id: string;
+  start_date: string; end_date: string | null;
+};
+type TargetRec = { tenant_id: string; period_month: string; target_nett: number };
+type TenantRec = { tenant_id: string; tenant_name: string };
+
+const getUnits = cache(() => fetchAll<UnitRec>(
+  "units", "unit_id,unit_code,floor,is_active", ["unit_id"]));
+const getTenancies = cache(() => fetchAll<TenancyRec>(
+  "tenancies", "tenancy_id,unit_id,tenant_id,start_date,end_date", ["tenancy_id"]));
+const getTargets = cache(() => fetchAll<TargetRec>(
+  "targets", "tenant_id,period_month,target_nett", ["tenant_id", "period_month"]));
+const getTenantNames = cache(() => fetchAll<TenantRec>(
+  "tenants", "tenant_id,tenant_name", ["tenant_id"]));
+
 export type PerfTenant = {
   id: string; name: string; nett: number; visitors: number;
   avgCheck: number; mom: number | null; share: number; unit: string | null;
+};
+
+export type TargetInfo = {
+  total: number; actual: number; pct: number;
+  perTenant: { name: string; target: number; actual: number; pct: number }[];
+};
+export type OccupancyInfo = {
+  total: number; occupied: number;
+  units: {
+    unit: string; floor: string | null; tenant: string | null;
+    period: string | null; nett: number;
+  }[];
 };
 
 export type PerfData = {
@@ -214,6 +245,8 @@ export type PerfData = {
   totalNett: number; totalVisitors: number; avgCheck: number;
   momTotal: number | null;
   tenants: PerfTenant[]; falling: PerfTenant[];
+  target: TargetInfo | null;
+  occupancy: OccupancyInfo | null;
 };
 
 /**
@@ -229,10 +262,13 @@ export async function getPerformance(reqMonth?: string): Promise<PerfData> {
     configured: isConfigured, months: [], month: "", prev: null, cutoff: null,
     totalNett: 0, totalVisitors: 0, avgCheck: 0, momTotal: null,
     tenants: [], falling: [],
+    target: null, occupancy: null,
   };
   if (!isConfigured) return empty;
 
-  const [sales, pg] = await Promise.all([getSales(), getPg()]);
+  const [sales, pg, units, tenancies, targets, tenantRecs] = await Promise.all([
+    getSales(), getPg(), getUnits(), getTenancies(), getTargets(), getTenantNames(),
+  ]);
   type U = { id: string; name: string; date: string; nett: number; vis: number; unit: string | null };
   const rows: U[] = [
     ...sales.map((r) => ({
@@ -288,6 +324,59 @@ export async function getPerformance(reqMonth?: string): Promise<PerfData> {
     };
   }).sort((a, b) => b.nett - a.nett);
 
+  const nameOf = new Map(tenantRecs.map((t) => [t.tenant_id, t.tenant_name]));
+
+  // Target pencapaian: target_nett bulan ini vs realisasi month-to-date.
+  const monthTargets = targets.filter((t) => t.period_month.slice(0, 7) === month);
+  let target: TargetInfo | null = null;
+  if (monthTargets.length) {
+    const perTenant = monthTargets.map((t) => {
+      const actual = cur.get(t.tenant_id)?.nett ?? 0;
+      return {
+        name: nameOf.get(t.tenant_id) ?? t.tenant_id,
+        target: t.target_nett, actual,
+        pct: t.target_nett ? (actual / t.target_nett) * 100 : 0,
+      };
+    }).sort((a, b) => b.pct - a.pct);
+    const totTarget = perTenant.reduce((s, t) => s + t.target, 0);
+    const totActual = perTenant.reduce((s, t) => s + t.actual, 0);
+    target = {
+      total: totTarget, actual: totActual,
+      pct: totTarget ? (totActual / totTarget) * 100 : 0,
+      perTenant,
+    };
+  }
+
+  // Okupansi: tenancy dianggap mengisi unit bila periode sewanya beririsan
+  // dengan bulan terpilih. Nett per unit dari atribusi unit_code di view.
+  const monthStart = `${month}-01`;
+  const monthEnd = `${month}-${String(daysInMonth).padStart(2, "0")}`;
+  const nettByUnit = new Map<string, number>();
+  for (const r of inMonth) {
+    if (r.unit) nettByUnit.set(r.unit, (nettByUnit.get(r.unit) ?? 0) + r.nett);
+  }
+  let occupancy: OccupancyInfo | null = null;
+  const activeUnits = units.filter((u) => u.is_active);
+  if (activeUnits.length) {
+    const unitRows = activeUnits.map((u) => {
+      const t = tenancies.find((x) =>
+        x.unit_id === u.unit_id &&
+        x.start_date <= monthEnd &&
+        (x.end_date === null || x.end_date >= monthStart));
+      return {
+        unit: u.unit_code, floor: u.floor,
+        tenant: t ? nameOf.get(t.tenant_id) ?? t.tenant_id : null,
+        period: t ? `${t.start_date} – ${t.end_date ?? "aktif"}` : null,
+        nett: nettByUnit.get(u.unit_code) ?? 0,
+      };
+    }).sort((a, b) => b.nett - a.nett || a.unit.localeCompare(b.unit));
+    occupancy = {
+      total: unitRows.length,
+      occupied: unitRows.filter((r) => r.tenant).length,
+      units: unitRows,
+    };
+  }
+
   return {
     configured: true, months, month, prev, cutoff,
     totalNett, totalVisitors,
@@ -296,6 +385,7 @@ export async function getPerformance(reqMonth?: string): Promise<PerfData> {
     tenants,
     falling: tenants.filter((t) => t.mom !== null && (t.mom as number) < -10)
       .sort((a, b) => (a.mom ?? 0) - (b.mom ?? 0)),
+    target, occupancy,
   };
 }
 

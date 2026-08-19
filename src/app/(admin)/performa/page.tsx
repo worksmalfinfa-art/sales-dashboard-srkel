@@ -3,6 +3,8 @@ import React from "react";
 import Badge from "@/components/ui/badge/Badge";
 import GroveMetrics from "@/components/grove/GroveMetrics";
 import MonthPicker from "@/components/grove/MonthPicker";
+import TargetCard from "@/components/grove/TargetCard";
+import UnitTable from "@/components/grove/UnitTable";
 import { getPerformance, fmtRp, idNum } from "@/lib/grove";
 
 export const metadata: Metadata = { title: "Performa Tenant — GROVE" };
@@ -93,6 +95,44 @@ export default async function PerformaPage({
           </div>
         </div>
       )}
+
+      {d.target || d.occupancy ? (
+        <>
+          {d.target ? (
+            <div className={`col-span-12 ${d.occupancy ? "xl:col-span-5" : ""}`}>
+              <TargetCard
+                pct={d.target.pct} month={d.month}
+                totalLabel={fmtRp(d.target.total)}
+                actualLabel={fmtRp(d.target.actual)}
+                perTenant={d.target.perTenant.map((t) => ({
+                  name: t.name, target: fmtRp(t.target),
+                  actual: fmtRp(t.actual), pct: t.pct,
+                }))}
+              />
+            </div>
+          ) : null}
+          {d.occupancy ? (
+            <div className={`col-span-12 ${d.target ? "xl:col-span-7" : ""}`}>
+              <UnitTable
+                occupied={d.occupancy.occupied} total={d.occupancy.total}
+                rows={d.occupancy.units.map((u) => ({
+                  unit: u.unit, floor: u.floor, tenant: u.tenant,
+                  period: u.period, nett: fmtRp(u.nett),
+                }))}
+              />
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+      {!d.target ? (
+        <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Belum ada target untuk {d.month} — atur target bulanan per tenant
+            melalui aplikasi pengelolaan agar kartu pencapaian tampil di sini.
+          </p>
+        </div>
+      ) : null}
 
       <div className="col-span-12">
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-3 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
