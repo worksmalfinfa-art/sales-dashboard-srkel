@@ -22,17 +22,39 @@ export const isConfigured = Boolean(url && key);
 
 const PAGE = 1000;
 
-async function fetchAll<T>(table: string, orderCol?: string): Promise<T[]> {
-  if (!url || !key) return [];
-  const sb = createClient(url, key);
+const sb = url && key ? createClient(url, key) : null;
+
+/**
+ * Count first, then pull every page in ONE parallel burst. The serial
+ * loop this replaces cost one full round-trip per 1000 rows, which is
+ * where the seconds-long page opens came from once the table grew.
+ *
+ * orderCols must form a deterministic total order (unique key or
+ * combination) — parallel range windows over an ambiguous order can
+ * duplicate or drop rows at page boundaries.
+ */
+async function fetchAll<T>(
+  table: string, columns: string, orderCols: string[],
+): Promise<T[]> {
+  if (!sb) return [];
+  const head = await sb.from(table)
+    .select(columns, { count: "exact", head: true });
+  if (head.error) throw new Error(`${table}: ${head.error.message}`);
+  const total = head.count ?? 0;
+  if (!total) return [];
+
+  const pages = await Promise.all(
+    Array.from({ length: Math.ceil(total / PAGE) }, (_, i) => {
+      let q = sb.from(table).select(columns)
+        .range(i * PAGE, i * PAGE + PAGE - 1);
+      for (const c of orderCols) q = q.order(c);
+      return q;
+    }),
+  );
   const rows: T[] = [];
-  for (let start = 0; ; start += PAGE) {
-    let q = sb.from(table).select("*").range(start, start + PAGE - 1);
-    if (orderCol) q = q.order(orderCol);
-    const { data, error } = await q;
-    if (error) throw new Error(`${table}: ${error.message}`);
-    rows.push(...((data ?? []) as T[]));
-    if (!data || data.length < PAGE) break;
+  for (const p of pages) {
+    if (p.error) throw new Error(`${table}: ${p.error.message}`);
+    rows.push(...((p.data ?? []) as unknown as T[]));
   }
   return rows;
 }
@@ -95,10 +117,7 @@ function demo(): MasterData {
 export async function getMasterData(): Promise<MasterData> {
   if (!isConfigured) return demo();
 
-  const [sales, pg] = await Promise.all([
-    fetchAll<SalesRow>("v_sales_enriched", "sales_date"),
-    fetchAll<PlaygroundRow>("playground_sales", "sales_date"),
-  ]);
+  const [sales, pg] = await Promise.all([getSales(), getPg()]);
 
   const day = (s: string) => s.slice(0, 10);
   const month = (s: string) => s.slice(0, 7);
@@ -170,8 +189,19 @@ export function idNum(v: number): string {
 // table three times when several sections need it.
 // ---------------------------------------------------------------------------
 
-const getSales = cache(() => fetchAll<SalesRow>("v_sales_enriched", "sales_date"));
-const getPg = cache(() => fetchAll<PlaygroundRow>("playground_sales", "sales_date"));
+// (sales_date, tenant_id, sales_hour) is the table's unique key, so the
+// order is total; order_id is the playground primary key.
+const getSales = cache(() => fetchAll<SalesRow>(
+  "v_sales_enriched",
+  "tenant_id,tenant_name,category,unit_code,sales_date,sales_hour," +
+    "pax_total,subtotal,discount_total,nett_sales",
+  ["sales_date", "tenant_id", "sales_hour"],
+));
+const getPg = cache(() => fetchAll<PlaygroundRow>(
+  "playground_sales",
+  "order_id,sales_date,nett_sales,child_total,companion_total",
+  ["order_id"],
+));
 
 export type PerfTenant = {
   id: string; name: string; nett: number; visitors: number;
