@@ -1,12 +1,7 @@
-import SignUpForm from "@/components/auth/SignUpForm";
-import { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Next.js SignUp Page | TailAdmin - Next.js Dashboard Template",
-  description: "This is Next.js SignUp Page TailAdmin Dashboard Template",
-  // other metadata
-};
-
+// Registration is closed: accounts are created by the GROVE admin in the
+// Supabase dashboard (Authentication → Users).
 export default function SignUp() {
-  return <SignUpForm />;
+  redirect("/signin");
 }
