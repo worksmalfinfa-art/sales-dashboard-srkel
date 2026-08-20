@@ -25,6 +25,9 @@ export default function SalesChart({
       toolbar: { show: false },
       zoom: { enabled: false },
       animations: { enabled: false },
+      // Safari iOS memicu window-resize setiap address bar menyusut saat
+      // scroll; tanpa ini semua chart digambar ulang di tiap scroll.
+      redrawOnWindowResize: false, redrawOnParentResize: true,
     },
     dataLabels: { enabled: false },
     grid: {

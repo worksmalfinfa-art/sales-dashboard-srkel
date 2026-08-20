@@ -26,6 +26,10 @@ export default function DeepDiveTable({
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({
     key: cols[0].key, dir: 1,
   });
+  // "Semua data" can mean 600+ days; rendering them all at once is what
+  // makes a phone stutter, so the tail waits behind a button.
+  const [showAll, setShowAll] = useState(false);
+  const LIMIT = 120;
 
   const sorted = useMemo(() => {
     const { key, dir } = sort;
@@ -35,6 +39,7 @@ export default function DeepDiveTable({
       return String(x).localeCompare(String(y)) * dir;
     });
   }, [rows, sort]);
+  const visible = showAll ? sorted : sorted.slice(0, LIMIT);
 
   const toggle = (key: string) =>
     setSort((s) => ({ key, dir: s.key === key && s.dir === 1 ? -1 : 1 }));
@@ -66,7 +71,7 @@ export default function DeepDiveTable({
             </tr>
           </thead>
           <tbody>
-            {sorted.map((r, ri) => (
+            {visible.map((r, ri) => (
               <tr
                 key={ri}
                 className="border-b border-gray-100 last:border-0 dark:border-gray-800"
@@ -88,6 +93,14 @@ export default function DeepDiveTable({
           </tbody>
         </table>
       </div>
+      {!showAll && sorted.length > LIMIT ? (
+        <button
+          onClick={() => setShowAll(true)}
+          className="mt-3 w-full rounded-lg border border-gray-200 py-2 text-theme-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-white/5"
+        >
+          Tampilkan semua ({sorted.length} hari)
+        </button>
+      ) : null}
       <p className="mt-3 text-theme-xs text-gray-400">
         {rows.length} hari · klik judul kolom untuk mengurutkan
       </p>

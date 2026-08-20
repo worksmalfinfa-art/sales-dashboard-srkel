@@ -26,6 +26,9 @@ export default function HourHeatmap({
       fontFamily: "Outfit, sans-serif", type: "heatmap",
       toolbar: { show: false },
       animations: { enabled: false },
+      // Safari iOS memicu window-resize setiap address bar menyusut saat
+      // scroll; tanpa ini semua chart digambar ulang di tiap scroll.
+      redrawOnWindowResize: false, redrawOnParentResize: true,
     },
     colors: ["#465FFF"],
     dataLabels: { enabled: false },

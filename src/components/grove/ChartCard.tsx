@@ -29,6 +29,9 @@ export default function ChartCard({
       // Phone main threads choke on chart draw animations; taps queue
       // behind them and the UI reads as laggy.
       animations: { enabled: false },
+      // Safari iOS memicu window-resize setiap address bar menyusut saat
+      // scroll; tanpa ini semua chart digambar ulang di tiap scroll.
+      redrawOnWindowResize: false, redrawOnParentResize: true,
     },
     dataLabels: { enabled: false },
     grid: {
