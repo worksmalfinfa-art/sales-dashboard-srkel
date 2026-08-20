@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { ApexOptions } from "apexcharts";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
+import LazyMount from "./LazyMount";
 
 /**
  * Month target attainment: one radial gauge for the property total, then a
@@ -17,7 +18,11 @@ export default function TargetCard({
   perTenant: { name: string; target: string; actual: string; pct: number }[];
 }) {
   const options: ApexOptions = {
-    chart: { fontFamily: "Outfit, sans-serif", type: "radialBar", sparkline: { enabled: true } },
+    chart: {
+      fontFamily: "Outfit, sans-serif", type: "radialBar",
+      sparkline: { enabled: true },
+      animations: { enabled: false },
+    },
     colors: ["#465FFF"],
     plotOptions: {
       radialBar: {
@@ -47,12 +52,14 @@ export default function TargetCard({
         Realisasi {month}: {actualLabel} dari target {totalLabel}
       </p>
       <div className="mx-auto -mb-10 mt-2 w-full max-w-[300px]">
-        <Chart
-          options={options}
-          series={[Math.min(100, Math.round(pct * 10) / 10)]}
-          type="radialBar"
-          height={240}
-        />
+        <LazyMount height={240}>
+          <Chart
+            options={options}
+            series={[Math.min(100, Math.round(pct * 10) / 10)]}
+            type="radialBar"
+            height={240}
+          />
+        </LazyMount>
       </div>
       <div className="mt-4 space-y-4">
         {perTenant.map((t) => (

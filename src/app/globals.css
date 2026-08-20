@@ -782,3 +782,9 @@ span.flatpickr-weekday,
     overflow: visible !important;
   }
 }
+
+/* Touch: buang delay tap ganda di perangkat sentuh — kontrol harus
+   merespons ketukan pertama. */
+button, a, select, input, label {
+  touch-action: manipulation;
+}

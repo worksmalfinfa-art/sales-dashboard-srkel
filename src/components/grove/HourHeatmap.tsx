@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { ApexOptions } from "apexcharts";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
+import LazyMount from "./LazyMount";
 
 /**
  * Hour-of-day × day-of-week heatmap. Rows arrive Sen..Min; ApexCharts draws
@@ -24,6 +25,7 @@ export default function HourHeatmap({
     chart: {
       fontFamily: "Outfit, sans-serif", type: "heatmap",
       toolbar: { show: false },
+      animations: { enabled: false },
     },
     colors: ["#465FFF"],
     dataLabels: { enabled: false },
@@ -60,7 +62,9 @@ export default function HourHeatmap({
       </p>
       <div className="mt-4 max-w-full overflow-x-auto custom-scrollbar">
         <div className="min-w-[560px] xl:min-w-full">
-          <Chart options={options} series={series} type="heatmap" height={300} />
+          <LazyMount height={300}>
+            <Chart options={options} series={series} type="heatmap" height={300} />
+          </LazyMount>
         </div>
       </div>
     </div>

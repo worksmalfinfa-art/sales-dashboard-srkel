@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { ApexOptions } from "apexcharts";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
+import LazyMount from "./LazyMount";
 
 type Daily = { date: string; fnb: number; pg: number };
 type Monthly = { month: string; fnb: number; pg: number };
@@ -23,6 +24,7 @@ export default function SalesChart({
       fontFamily: "Outfit, sans-serif",
       toolbar: { show: false },
       zoom: { enabled: false },
+      animations: { enabled: false },
     },
     dataLabels: { enabled: false },
     grid: {
@@ -121,7 +123,9 @@ export default function SalesChart({
       </div>
       <div className="max-w-full overflow-x-auto custom-scrollbar">
         <div className="min-w-[650px] xl:min-w-full">
-          <Chart options={options} series={series} type={mode === "daily" ? "area" : "bar"} height={310} />
+          <LazyMount height={310}>
+            <Chart options={options} series={series} type={mode === "daily" ? "area" : "bar"} height={310} />
+          </LazyMount>
         </div>
       </div>
     </div>

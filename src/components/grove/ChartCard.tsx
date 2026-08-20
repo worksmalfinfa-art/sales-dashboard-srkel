@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { ApexOptions } from "apexcharts";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
+import LazyMount from "./LazyMount";
 
 type Series = { name: string; data: number[] };
 
@@ -25,6 +26,9 @@ export default function ChartCard({
     chart: {
       fontFamily: "Outfit, sans-serif", type: kind, stacked,
       toolbar: { show: false }, zoom: { enabled: false },
+      // Phone main threads choke on chart draw animations; taps queue
+      // behind them and the UI reads as laggy.
+      animations: { enabled: false },
     },
     dataLabels: { enabled: false },
     grid: {
@@ -77,7 +81,9 @@ export default function ChartCard({
       ) : null}
       <div className="mt-4 max-w-full overflow-x-auto custom-scrollbar">
         <div className="min-w-[560px] xl:min-w-full">
-          <Chart options={options} series={series} type={kind} height={height} />
+          <LazyMount height={height}>
+            <Chart options={options} series={series} type={kind} height={height} />
+          </LazyMount>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { ApexOptions } from "apexcharts";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
+import LazyMount from "./LazyMount";
 
 /**
  * Revenue contribution donut with the grand total in its centre, plus a
@@ -18,7 +19,10 @@ export default function ContributionDonut({
 }) {
   const options: ApexOptions = {
     colors: ["#465FFF", "#9CB9FF"],
-    chart: { fontFamily: "Outfit, sans-serif", type: "donut" },
+    chart: {
+      fontFamily: "Outfit, sans-serif", type: "donut",
+      animations: { enabled: false },
+    },
     labels: ["F&B", "Playground"],
     stroke: { width: 3, colors: ["#fff"] },
     dataLabels: { enabled: false },
@@ -52,7 +56,9 @@ export default function ContributionDonut({
         Porsi tiap sumber terhadap total
       </p>
       <div className="mt-4">
-        <Chart options={options} series={[fnb, pg]} type="donut" height={230} />
+        <LazyMount height={230}>
+          <Chart options={options} series={[fnb, pg]} type="donut" height={230} />
+        </LazyMount>
       </div>
       <div className="mt-5 space-y-3">
         {rows.map((r) => (
