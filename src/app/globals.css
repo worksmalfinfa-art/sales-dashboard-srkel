@@ -788,3 +788,25 @@ span.flatpickr-weekday,
 button, a, select, input, label {
   touch-action: manipulation;
 }
+
+/* ============================================================
+   Stabilitas chart & tooltip (bug kedip di zoom 100%):
+   1) scrollbar-gutter: lebar viewport tidak berubah saat scrollbar
+      muncul/hilang — memutus loop "resize -> chart redraw -> resize".
+   2) SVG ApexCharts kadang terukur beberapa px lebih lebar dari
+      kotaknya (lebar pecahan) — clamp supaya tak memicu scrollbar.
+   3) Tanpa fade: bila chart tetap redraw, tooltip muncul seketika,
+      bukan berkedip transisi 0.15s dari nol.
+   ============================================================ */
+html {
+  scrollbar-gutter: stable;
+}
+.apexcharts-canvas,
+.apexcharts-canvas svg {
+  max-width: 100%;
+}
+.apexcharts-tooltip,
+.apexcharts-xaxistooltip,
+.apexcharts-xcrosshairs {
+  transition: none !important;
+}
