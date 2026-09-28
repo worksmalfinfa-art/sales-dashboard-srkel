@@ -29,9 +29,10 @@ export default function ChartCard({
       // Phone main threads choke on chart draw animations; taps queue
       // behind them and the UI reads as laggy.
       animations: { enabled: false },
-      // Safari iOS memicu window-resize setiap address bar menyusut saat
-      // scroll; tanpa ini semua chart digambar ulang di tiap scroll.
-      redrawOnWindowResize: false, redrawOnParentResize: true,
+      // Semua observer resize internal Apex MATI — lebar dikelola LazyMount
+      // (integer, threshold 2px). Observer Apex di DPR pecahan bisa
+      // redraw berulang dan membuat tooltip berkedip.
+      redrawOnWindowResize: false, redrawOnParentResize: false,
     },
     dataLabels: { enabled: false },
     grid: {
@@ -85,7 +86,10 @@ export default function ChartCard({
       <div className="mt-4 max-w-full overflow-x-auto custom-scrollbar">
         <div className="min-w-[560px] xl:min-w-full">
           <LazyMount height={height}>
-            <Chart options={options} series={series} type={kind} height={height} />
+            {(w: number) => (
+              <Chart options={options} series={series} type={kind}
+                     height={height} width={w} />
+            )}
           </LazyMount>
         </div>
       </div>

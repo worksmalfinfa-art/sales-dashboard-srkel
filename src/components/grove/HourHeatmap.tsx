@@ -26,9 +26,10 @@ export default function HourHeatmap({
       fontFamily: "Outfit, sans-serif", type: "heatmap",
       toolbar: { show: false },
       animations: { enabled: false },
-      // Safari iOS memicu window-resize setiap address bar menyusut saat
-      // scroll; tanpa ini semua chart digambar ulang di tiap scroll.
-      redrawOnWindowResize: false, redrawOnParentResize: true,
+      // Semua observer resize internal Apex MATI — lebar dikelola LazyMount
+      // (integer, threshold 2px). Observer Apex di DPR pecahan bisa
+      // redraw berulang dan membuat tooltip berkedip.
+      redrawOnWindowResize: false, redrawOnParentResize: false,
     },
     colors: ["#465FFF"],
     dataLabels: { enabled: false },
@@ -66,7 +67,10 @@ export default function HourHeatmap({
       <div className="mt-4 max-w-full overflow-x-auto custom-scrollbar">
         <div className="min-w-[560px] xl:min-w-full">
           <LazyMount height={300}>
-            <Chart options={options} series={series} type="heatmap" height={300} />
+            {(w: number) => (
+              <Chart options={options} series={series} type="heatmap"
+                     height={300} width={w} />
+            )}
           </LazyMount>
         </div>
       </div>

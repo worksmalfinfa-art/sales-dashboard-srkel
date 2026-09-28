@@ -22,9 +22,10 @@ export default function ContributionDonut({
     chart: {
       fontFamily: "Outfit, sans-serif", type: "donut",
       animations: { enabled: false },
-      // Safari iOS memicu window-resize setiap address bar menyusut saat
-      // scroll; tanpa ini semua chart digambar ulang di tiap scroll.
-      redrawOnWindowResize: false, redrawOnParentResize: true,
+      // Semua observer resize internal Apex MATI — lebar dikelola LazyMount
+      // (integer, threshold 2px). Observer Apex di DPR pecahan bisa
+      // redraw berulang dan membuat tooltip berkedip.
+      redrawOnWindowResize: false, redrawOnParentResize: false,
     },
     labels: ["F&B", "Playground"],
     stroke: { width: 3, colors: ["#fff"] },
@@ -60,7 +61,10 @@ export default function ContributionDonut({
       </p>
       <div className="mt-4">
         <LazyMount height={230}>
-          <Chart options={options} series={[fnb, pg]} type="donut" height={230} />
+          {(w: number) => (
+            <Chart options={options} series={[fnb, pg]} type="donut"
+                   height={230} width={w} />
+          )}
         </LazyMount>
       </div>
       <div className="mt-5 space-y-3">

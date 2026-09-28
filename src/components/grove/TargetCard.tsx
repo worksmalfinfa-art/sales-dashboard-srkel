@@ -22,9 +22,10 @@ export default function TargetCard({
       fontFamily: "Outfit, sans-serif", type: "radialBar",
       sparkline: { enabled: true },
       animations: { enabled: false },
-      // Safari iOS memicu window-resize setiap address bar menyusut saat
-      // scroll; tanpa ini semua chart digambar ulang di tiap scroll.
-      redrawOnWindowResize: false, redrawOnParentResize: true,
+      // Semua observer resize internal Apex MATI — lebar dikelola LazyMount
+      // (integer, threshold 2px). Observer Apex di DPR pecahan bisa
+      // redraw berulang dan membuat tooltip berkedip.
+      redrawOnWindowResize: false, redrawOnParentResize: false,
     },
     colors: ["#465FFF"],
     plotOptions: {
@@ -56,12 +57,15 @@ export default function TargetCard({
       </p>
       <div className="mx-auto -mb-10 mt-2 w-full max-w-[300px]">
         <LazyMount height={240}>
-          <Chart
-            options={options}
-            series={[Math.min(100, Math.round(pct * 10) / 10)]}
-            type="radialBar"
-            height={240}
-          />
+          {(w: number) => (
+            <Chart
+              options={options}
+              series={[Math.min(100, Math.round(pct * 10) / 10)]}
+              type="radialBar"
+              height={240}
+              width={w}
+            />
+          )}
         </LazyMount>
       </div>
       <div className="mt-4 space-y-4">
